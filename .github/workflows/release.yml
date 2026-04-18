@@ -1,0 +1,53 @@
+name: Build and Auto-Release
+
+on:
+  push:
+    tags:
+      - 'v*' # Secara otomatis berjalan saat Anda melakukan push Tag berawalan v (misal: v1.0)
+  workflow_dispatch: # Memungkinkan Anda memicu build ini secara manual dari browser via tab Actions
+
+jobs:
+  build:
+    name: Compile Native Windows Binary
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout System Source Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install MinGW Cross-Compiler Stack
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - name: 🔨 Execute Ubuntu Pipeline Script
+        run: |
+          cd build
+          chmod +x ./build_ubuntu.sh
+          ./build_ubuntu.sh
+
+      - name: 📤 Export Binary Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-Binary
+          path: build/PhotoPrinter.exe
+
+  release:
+    name: Generate GitHub Auto-Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # GitHub token memerlukan izin ini untuk bisa meng-upload file ke Releases
+
+    steps:
+      - name: 📥 Download Extracted Binary
+        uses: actions/download-artifact@v4
+        with:
+          name: PhotoPrinter-Binary
+
+      - name: 🚀 Publish Official Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: PhotoPrinter.exe
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
