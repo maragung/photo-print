@@ -3,51 +3,187 @@ name: Build and Auto-Release
 on:
   push:
     tags:
-      - 'v*' # Secara otomatis berjalan saat Anda melakukan push Tag berawalan v (misal: v1.0)
-  workflow_dispatch: # Memungkinkan Anda memicu build ini secara manual dari browser via tab Actions
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
-  build:
-    name: Compile Native Windows Binary
-    runs-on: ubuntu-latest
-
+  # ===== WINDOWS BUILDS =====
+  build-windows-x86_64:
+    name: Build Windows x86_64
+    runs-on: windows-latest
     steps:
-      - name: 📥 Checkout System Source Code
+      - name: 📥 Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: ⚙️ Install MinGW Cross-Compiler Stack
-        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - name: 🔨 Build Windows x86_64 Binary
+        shell: cmd
+        run: |
+          cd build
+          call build_gcc.bat
+          ren PhotoPrinter.exe PhotoPrinter-windows-x86_64.exe
 
-      - name: 🔨 Execute Ubuntu Pipeline Script
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-windows-x86_64
+          path: build/PhotoPrinter-windows-x86_64.exe
+          retention-days: 1
+
+  build-windows-i686:
+    name: Build Windows i686 (32-bit)
+    runs-on: windows-latest
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: 🔨 Build Windows i686 Binary
+        shell: cmd
+        run: |
+          cd build
+          set CFLAGS=-m32
+          call build_gcc.bat
+          ren PhotoPrinter.exe PhotoPrinter-windows-i686.exe
+
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-windows-i686
+          path: build/PhotoPrinter-windows-i686.exe
+          retention-days: 1
+
+  # ===== LINUX NATIVE BUILDS =====
+  build-linux-x86_64:
+    name: Build Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential
+
+      - name: 🔨 Build Linux x86_64 Binary
         run: |
           cd build
           chmod +x ./build_ubuntu.sh
-          ./build_ubuntu.sh
+          TARGET_ARCH=x86_64 OUTPUT_FILE=PhotoPrinter-linux-x86_64 ./build_ubuntu.sh
 
-      - name: 📤 Export Binary Artifact
+      - name: 📤 Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PhotoPrinter-Binary
-          path: build/PhotoPrinter.exe
+          name: PhotoPrinter-linux-x86_64
+          path: build/PhotoPrinter-linux-x86_64
+          retention-days: 1
 
+  build-linux-i686:
+    name: Build Linux i686 (32-bit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc-multilib g++-multilib
+
+      - name: 🔨 Build Linux i686 Binary
+        run: |
+          cd build
+          chmod +x ./build_ubuntu.sh
+          TARGET_ARCH=i686 OUTPUT_FILE=PhotoPrinter-linux-i686 ./build_ubuntu.sh
+
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-linux-i686
+          path: build/PhotoPrinter-linux-i686
+          retention-days: 1
+
+  # ===== LINUX CROSS-COMPILE BUILDS =====
+  build-linux-armv7:
+    name: Build Linux ARMv7
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install Cross-Compile Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf
+
+      - name: 🔨 Build Linux ARMv7 Binary
+        run: |
+          cd build
+          chmod +x ./build_ubuntu.sh
+          TARGET_ARCH=armv7 OUTPUT_FILE=PhotoPrinter-linux-armv7 ./build_ubuntu.sh
+
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-linux-armv7
+          path: build/PhotoPrinter-linux-armv7
+          retention-days: 1
+
+  build-linux-aarch64:
+    name: Build Linux ARM64
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Install Cross-Compile Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+      - name: 🔨 Build Linux ARM64 Binary
+        run: |
+          cd build
+          chmod +x ./build_ubuntu.sh
+          TARGET_ARCH=aarch64 OUTPUT_FILE=PhotoPrinter-linux-aarch64 ./build_ubuntu.sh
+
+      - name: 📤 Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PhotoPrinter-linux-aarch64
+          path: build/PhotoPrinter-linux-aarch64
+          retention-days: 1
+
+  # ===== RELEASE JOB (runs after all builds complete) =====
   release:
-    name: Generate GitHub Auto-Release
-    needs: build
+    name: 🚀 Create GitHub Release
+    needs: [build-windows-x86_64, build-windows-i686, build-linux-x86_64, build-linux-i686, build-linux-armv7, build-linux-aarch64]
     runs-on: ubuntu-latest
     permissions:
-      contents: write # GitHub token memerlukan izin ini untuk bisa meng-upload file ke Releases
+      contents: write
 
     steps:
-      - name: 📥 Download Extracted Binary
-        uses: actions/download-artifact@v4
-        with:
-          name: PhotoPrinter-Binary
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
 
-      - name: 🚀 Publish Official Release
+      - name: 📥 Download All Artifacts
+        uses: actions/download-artifact@v4
+
+      - name: 📋 List Downloaded Files
+        run: |
+          echo "=== Downloaded Artifacts ==="
+          find . -type f -name "PhotoPrinter*" -exec ls -lh {} \;
+
+      - name: 🚀 Publish Release
         uses: softprops/action-gh-release@v2
         with:
-          files: PhotoPrinter.exe
+          files: |
+            PhotoPrinter-windows-x86_64/PhotoPrinter-windows-x86_64.exe
+            PhotoPrinter-windows-i686/PhotoPrinter-windows-i686.exe
+            PhotoPrinter-linux-x86_64/PhotoPrinter-linux-x86_64
+            PhotoPrinter-linux-i686/PhotoPrinter-linux-i686
+            PhotoPrinter-linux-armv7/PhotoPrinter-linux-armv7
+            PhotoPrinter-linux-aarch64/PhotoPrinter-linux-aarch64
           generate_release_notes: true
-          fail_on_unmatched_files: true
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
