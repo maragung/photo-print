@@ -1,37 +1,89 @@
 #!/bin/bash
-cd "$(dirname "$0")"
+set -e
 
-# Cross-compilation build script for deploying the Windows C++ Application from inside Ubuntu/Linux using MinGW-w64
+# ===== CONFIGURATION =====
+TARGET_ARCH=${TARGET_ARCH:-"native"}
+OUTPUT_FILE=${OUTPUT_FILE:-"PhotoPrinter"}
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "Compiling Photo Printer natively for Windows (x86_64) from Ubuntu Linux..."
+echo "🔨 Building for: $TARGET_ARCH"
+echo "📁 Project Root: $PROJECT_ROOT"
 
-# Check if MinGW-w64 is installed
-if ! command -v x86_64-w64-mingw32-g++ &> /dev/null; then
-    echo "Error: MinGW-w64 compiler chain is not installed!"
-    echo "Please install it first by executing: sudo apt-get update && sudo apt-get install mingw-w64"
+# ===== SETUP COMPILER & FLAGS =====
+case $TARGET_ARCH in
+  x86_64|x64)
+    echo "⚙️  Configuring for x86_64..."
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-m64 -O2"
+    export CXXFLAGS="-m64 -O2 -std=c++11"
+    export LDFLAGS="-m64"
+    ;;
+  
+  i686|i386|x86)
+    echo "⚙️  Configuring for i686 (32-bit)..."
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-m32 -O2"
+    export CXXFLAGS="-m32 -O2 -std=c++11"
+    export LDFLAGS="-m32"
+    ;;
+  
+  armv7|arm)
+    echo "⚙️  Configuring for ARMv7..."
+    export CC=arm-linux-gnueabihf-gcc
+    export CXX=arm-linux-gnueabihf-g++
+    export CFLAGS="-march=armv7-a -mfpu=neon -O2"
+    export CXXFLAGS="-march=armv7-a -mfpu=neon -O2 -std=c++11"
+    export LDFLAGS=""
+    ;;
+  
+  aarch64|arm64)
+    echo "⚙️  Configuring for ARM64..."
+    export CC=aarch64-linux-gnu-gcc
+    export CXX=aarch64-linux-gnu-g++
+    export CFLAGS="-O2"
+    export CXXFLAGS="-O2 -std=c++11"
+    export LDFLAGS=""
+    ;;
+  
+  native)
+    echo "⚙️  Configuring for native build..."
+    export CC=gcc
+    export CXX=g++
+    export CFLAGS="-O2"
+    export CXXFLAGS="-O2 -std=c++11"
+    export LDFLAGS=""
+    ;;
+  
+  *)
+    echo "❌ Unknown target architecture: $TARGET_ARCH"
     exit 1
-fi
+    ;;
+esac
 
-echo "Compiling native Windows UI resources (icons)..."
-x86_64-w64-mingw32-windres ../resource.rc -o resource.o
-if [ $? -ne 0 ]; then
-    echo "Resource compilation failed!"
-    exit 1
-fi
+# ===== BUILD PROCESS =====
+echo "🔨 Starting compilation..."
 
-echo "Compiling C++ Win32 Source Matrix..."
-x86_64-w64-mingw32-g++ ../main.cpp resource.o -o PhotoPrinter.exe \
-    -std=c++11 \
-    -mwindows \
-    -municode \
-    -static \
-    -static-libgcc \
-    -static-libstdc++ \
-    -lgdiplus -lgdi32 -lcomctl32 -lcomdlg32 -lole32
+cd "$PROJECT_ROOT"
 
-if [ $? -ne 0 ]; then
-    echo "Build Phase completed with critical errors. Please check the logs."
-    exit 1
+# Compile main.cpp
+echo "📝 Compiling main.cpp..."
+$CXX $CXXFLAGS -c main.cpp -o main.o
+
+# Link with resource.o and system libraries
+echo "🔗 Linking binary..."
+$CXX $LDFLAGS main.o "$SCRIPT_DIR/resource.o" \
+  -o "$SCRIPT_DIR/$OUTPUT_FILE" \
+  -lws2_32 -lgdiplus -lcomctl32 -lstdc++ -lm
+
+# Verify output
+if [ -f "$SCRIPT_DIR/$OUTPUT_FILE" ]; then
+  echo "✅ Build successful!"
+  echo "📦 Output: $SCRIPT_DIR/$OUTPUT_FILE"
+  ls -lh "$SCRIPT_DIR/$OUTPUT_FILE"
 else
-    echo "Success! Binary structurally compiled: build/PhotoPrinter.exe"
+  echo "❌ Build failed - output file not found"
+  exit 1
 fi
